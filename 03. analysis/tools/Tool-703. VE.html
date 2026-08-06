@@ -1,0 +1,1653 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<script src="../../js/supabase-config.js"></script>
+	<script src="../../js/auth-guard.js"></script>
+	<script src="../../js/himec-supabase-sync.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HIMEC - VE (Value Engineering) Analysis Tool</title>
+<style>
+  /* ═══════════════════════════════════════════════════════════
+     RESET & BASE (Tool-306 기반)
+     ═══════════════════════════════════════════════════════════ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  input, select, textarea { border: none; outline: none; }
+  input:focus, select:focus, textarea:focus { border: none; outline: none; }
+  html, body {
+    font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+    background: #f5f5f5; color: #333;
+    height: 100vh; width: 100vw; overflow: hidden;
+  }
+  body { display: flex; flex-direction: column; }
+
+  .page-container {
+    padding: 0 100px; flex: 1; display: flex; flex-direction: column;
+    overflow: hidden; min-height: 0; background: #fff;
+  }
+
+  /* ─── HEADER ─── */
+  .header {
+    background: #fff; padding: 8px 20px; border-bottom: 1px solid #ddd;
+    flex-shrink: 0; margin-left: -100px; margin-right: -100px;
+    padding-left: 120px; padding-right: 120px; position: relative;
+  }
+  .header h1 { font-size: 20px; font-weight: 700; color: #222; }
+  .header .sub { font-size: 11px; color: #888; margin-top: 2px; }
+  .header h2 { font-size: 15px; font-weight: 600; color: #333; margin-top: 4px; }
+  .header h2 #project-name:not(:empty)::before { content: "["; }
+  .header h2 #project-name:not(:empty)::after  { content: "]"; }
+
+  .header-right { position: absolute; bottom: 8px; right: 20px; display: flex; gap: 6px; }
+  .header-right button {
+    width:34px; height:34px; padding:0;
+    background:#ffffff; color:#555;
+    border:1px solid #d0d0d0; border-radius:8px;
+    display:inline-flex; align-items:center; justify-content:center;
+    cursor: pointer; box-sizing:border-box;
+  }
+  .header-right button:hover { background:#f5f5f5; border-color:#bbb; }
+  .header-right button svg { width:18px; height:18px; display:block; stroke:#555; }
+  .header-right button.btn-save:hover svg { stroke:#e85d24; }
+  .header-right button.btn-file:hover svg { stroke:#e85d24; }
+  /* 내보내기 드롭다운 메뉴 */
+  .himec-menu{ position:absolute; z-index:99999; background:#fff; border:1px solid #ccc;
+    border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.15); padding:4px; min-width:178px; }
+  .himec-menu button{ display:flex !important; align-items:center; gap:8px; width:100% !important;
+    height:auto !important; background:none !important; border:none !important; color:#222 !important;
+    padding:9px 12px !important; font-size:13px; text-align:left; cursor:pointer; border-radius:6px !important; }
+  .himec-menu button:hover{ background:#f1f1f1 !important; }
+  .himec-menu button svg{ width:16px; height:16px; stroke:#555; flex:0 0 auto; }
+
+  /* ─── TAB BAR ─── */
+  .tab-bar { display: flex; padding: 4px 20px 0; background: #fff; gap: 4px; flex-shrink: 0; }
+  .tab {
+    padding: 5px 20px; border-radius: 6px 6px 0 0; font-size: 12px; font-weight: 600;
+    cursor: pointer; border: none; background: #bbb; color: #fff; position: relative;
+    padding-right: 28px;
+  }
+  .tab.active { background: #00838f; color: #fff; }
+  .tab.add { background: #999; color: #fff; font-size: 14px; padding: 5px 16px; padding-right: 16px; }
+  .tab .tab-close {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px; border-radius: 50%; border: none; background: transparent;
+    color: rgba(255,255,255,0.7); font-size: 13px; line-height: 16px; text-align: center;
+    cursor: pointer; padding: 0;
+  }
+  .tab .tab-close:hover { background: rgba(255,0,0,0.6); color: #fff; }
+
+  /* ─── MAIN LAYOUT ─── */
+  .main {
+    display: grid; grid-template-columns: 3fr 2fr; gap: 0;
+    flex: 1; min-height: 0; overflow: hidden;
+  }
+
+  /* ─── PANELS ─── */
+  .panel {
+    background: #fff; padding: 10px 14px;
+    display: flex; flex-direction: column; overflow: hidden; min-height: 0;
+  }
+  #left-panel { border-right: 1px solid #e0e0e0; overflow: hidden; display:flex; flex-direction:column; padding: 0 !important; }
+  #left-panel::-webkit-scrollbar { width: 4px; }
+  #left-panel::-webkit-scrollbar-track { background: #f5f5f5; }
+  #left-panel::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
+
+  #right-panel { overflow-y: auto; }
+  #right-panel::-webkit-scrollbar { width: 4px; }
+  #right-panel::-webkit-scrollbar-track { background: #f5f5f5; }
+  #right-panel::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
+
+  /* ─── SECTION TITLE ─── */
+  .section-title {
+    font-size: 12px; font-weight: 700; margin: 8px 0 4px; color: #222;
+    flex-shrink: 0; display: flex; align-items: center; gap: 6px;
+  }
+
+  /* ─── INFO TABLE (Tool-306 통일 규격) ─── */
+  .info-table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    margin-bottom: 4px; font-size: 10px; flex-shrink: 0;
+  }
+  .info-table th, .info-table td {
+    border: 1px solid #ffffff; border-bottom: 1.5px solid #ccc;
+    padding: 6px 5px; text-align: center; vertical-align: middle;
+  }
+  .info-table th {
+    background: #e8e8e8; color: #555; font-weight: 600; font-size: 11px;
+  }
+  .info-table tr:first-child th:first-child { border-top-left-radius: 8px; }
+  .info-table tr:first-child th:last-child  { border-top-right-radius: 8px; }
+  .info-table input, .info-table select {
+    width: 100%; border: none; border-radius: 4px;
+    padding: 3px 4px; font-size: 11px; text-align: center;
+    background: #fff; outline: none;
+  }
+  .info-table input:focus, .info-table select:focus { border: none; outline: none; }
+  .info-table input[type="text"] { text-align: right; }
+  .info-table td:has(> input.crit-name) { background: #ffffff; }
+  .info-table input.crit-name { font-weight: 600; color: #555; text-align: center; }
+  .info-table input.crit-weight { color: #555555; text-align: center; }
+  .info-table input[data-grade] { text-align: center; }
+  .weight-input-wrap { position: relative; display: block; width: 100%; }
+  .weight-input-wrap input.crit-weight { width: 100%; padding-right: 14px; box-sizing: border-box; }
+  .weight-input-wrap .weight-unit {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    color: #888; font-size: 11px; pointer-events: none;
+  }
+
+  /* ─── NOTE ─── */
+  .note { font-size: 10px; color: #999; margin: 2px 0 6px; font-weight: 400; flex-shrink: 0; }
+
+  /* ─── ADD ROW BUTTON ─── */
+  .add-row-btn {
+    display: block; width: 100%; padding: 4px; margin: 0 0 4px;
+    border: 1px dashed #ccc; border-radius: 4px; background: #fafafa;
+    color: #888; font-size: 11px; cursor: pointer; text-align: center;
+  }
+  .add-row-btn:hover { background: #f0f0f0; color: #00838f; border-color: #00838f; }
+
+  /* ─── DELETE BUTTON ─── */
+  .del-btn {
+    background: none; border: none; color: #ccc; cursor: pointer;
+    font-size: 14px; padding: 0 4px; line-height: 1;
+  }
+  .del-btn:hover { color: #e53935; }
+
+  /* ─── VERDICT BOX ─── */
+  .verdict-box {
+    background: #f0fafa; border: 1.5px solid #00838f; border-radius: 8px;
+    padding: 10px 14px; text-align: center; flex-shrink: 0;
+    margin-top: 8px;
+  }
+  .verdict-box.warn { background: #fff5f5; border-color: #e53935; }
+  .verdict-label { font-size: 11px; color: #888; margin-bottom: 4px; font-weight: 600; }
+  .verdict-value { font-size: 16px; font-weight: 700; color: #00838f; }
+  .verdict-box.warn .verdict-value { color: #e53935; }
+  .verdict-sub { font-size: 10px; color: #999; margin-top: 4px; }
+
+  /* ─── RADAR CHART AREA ─── */
+  .chart-container {
+    position: relative; width: 100%; flex: 0 0 auto;
+    margin-bottom: 8px; background: #fafafa; border-radius: 8px;
+    border: 1px solid #eee; padding: 0;
+  }
+  .chart-container canvas { width: 100% !important; }
+
+  /* ─── RESULT TABLE ─── */
+  .result-table {
+    width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0;
+    margin-bottom: 8px; font-size: 10px;
+  }
+  .result-table th, .result-table td {
+    border: 1px solid #fff; border-bottom: 1.5px solid #ccc;
+    padding: 5px 6px; text-align: center; vertical-align: middle;
+    overflow-wrap: break-word; word-break: keep-all; line-height: 1.3;
+  }
+  .result-table th {
+    background: #e8e8e8; color: #555; font-weight: 600; font-size: 10px;
+  }
+  .result-table tr:first-child th:first-child { border-top-left-radius: 8px; }
+  .result-table tr:first-child th:last-child  { border-top-right-radius: 8px; }
+  .result-table .highlight { background: #e0f7fa; font-weight: 700; }
+  .result-table .selected-cell { background: #00838f; color: #fff; font-weight: 700; border-radius: 4px; }
+
+
+
+  /* ─── 비용지수 가운데정렬 ─── */
+  .info-table input[data-cost] { text-align: center !important; }
+
+  /* ─── SOURCE NOTE (접이식) ─── */
+  .source-note-collapsible {
+    font-size: 10px; color: #999; padding: 0; background: #fafafa;
+    border-radius: 6px; border: 1px solid #eee; margin-top: 8px; flex-shrink: 0;
+    line-height: 1.6; overflow: hidden;
+  }
+  .source-note-toggle {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px; cursor: pointer; user-select: none;
+    color: #666; font-weight: 600;
+  }
+  .source-note-toggle:hover { background: #f0f0f0; }
+  .source-note-arrow {
+    font-size: 8px; display: inline-block; transition: transform 0.2s;
+  }
+  .source-note-arrow.open { transform: rotate(90deg); }
+  .source-note-content {
+    display: none; padding: 0 8px 6px 22px; color: #999;
+  }
+  .source-note-content.open { display: block; }
+
+  /* ─── SOURCE NOTE (기존) ─── */
+  .source-note {
+    font-size: 10px; color: #999; padding: 4px 8px; background: #fafafa;
+    border-radius: 6px; border: 1px solid #eee; margin-top: 8px; flex-shrink: 0;
+    line-height: 1.6;
+  }
+  .source-note-title {
+    color: #666; font-weight: 600; padding: 2px 0; margin-bottom: 4px;
+  }
+  .source-note b { color: #666; }
+
+  /* ─── COPYRIGHT ─── */
+  .copyright {
+    text-align: center; font-size: 10px; color: #bbb;
+    padding: 4px 0; border-top: 1px solid #eee; flex-shrink: 0;
+  }
+
+  /* ─── 가중치 합계 표시 ─── */
+  .weight-sum { font-size: 10px; color: #888; margin: 0; font-weight: 400; }
+  .weight-sum.error { color: #e53935; font-weight: 700; }
+  .weight-sum.ok    { color: #00838f; }
+
+  /* ─── 대안명 입력 헤더 ─── */
+  .alt-header-row input {
+    font-weight: 600; color: #555; text-align: center;
+    border: none; border-radius: 4px; padding: 3px 4px;
+    font-size: 11px; width: 100%; background: #fff;
+  }
+  .alt-header-row input:focus { border: none; outline: none; }
+
+  /* ─── 대안 설정 표: 열 너비 고정 (대안명 입력 시 구분 열 흔들림 방지) ─── */
+  #alt-name-table { table-layout: fixed; }
+  #alt-name-table th {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* ─── 범례 (차트 위 오버레이) ─── */
+  .chart-legend {
+    display: flex; flex-direction: column; gap: 2px;
+    font-size: 9px; color: #666;
+    position: absolute; top: 10px; right: 10px; z-index: 2;
+    background: rgba(255,255,255,0.85); padding: 4px 6px;
+    border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    max-width: 38%;
+  }
+  .chart-legend-item { display: flex; align-items: center; gap: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chart-legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+
+  /* ─── LEFT PANEL HEAD & CI-BTN (뷰 전환 토글) ─── */
+  .left-head {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:6px 8px 4px 8px; flex-shrink:0;
+  }
+  .left-head .section-title { margin-bottom:0; }
+  .left-icons { display:flex; gap:6px; }
+  .ci-btn {
+    width:30px; height:30px; border:1px solid #d0d0d0; border-radius:7px;
+    background:#fff; color:#666; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .ci-btn:hover { background:#f5f5f5; }
+  .ci-btn.active { color:#00838f; border-color:#00838f; background:#e0f7fa; }
+  .ci-btn svg { width:17px; height:17px; }
+  .left-view { display:flex; flex-direction:column; flex:1; overflow-y:auto; overflow-x:hidden; padding:0 14px 10px 14px; }
+  .left-view::-webkit-scrollbar { width:4px; }
+  .left-view::-webkit-scrollbar-track { background:#f5f5f5; }
+  .left-view::-webkit-scrollbar-thumb { background:#ccc; border-radius:4px; }
+  .left-view-empty {
+    display:flex; flex:1; align-items:center; justify-content:center;
+    color:#bbb; font-size:13px;
+  }
+
+
+  /* ─── GROUP EVALUATION (그룹 평가) ─── */
+  .grp-card {
+    border: 1px solid #ddd; border-radius: 8px; margin-bottom: 6px;
+    background: #fff; overflow: hidden;
+  }
+  .grp-card-head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px; background: #f7f7f7; cursor: pointer;
+    border-bottom: 1px solid #eee; user-select: none;
+  }
+  .grp-card-head:hover { background: #f0f0f0; }
+  .grp-card-head .grp-arrow {
+    font-size: 10px; color: #555555; transition: transform 0.2s;
+    flex-shrink: 0; width: 14px; text-align: center;
+  }
+  .grp-card-head .grp-arrow.open { transform: rotate(90deg); }
+  .grp-card-head .grp-eval-num {
+    font-size: 11px; font-weight: 700; color: #555555; flex-shrink: 0;
+    background: #e0e0e0; border-radius: 4px; padding: 1px 7px;
+  }
+  .grp-card-head input.grp-name-input {
+    flex: 1; border: none; border-radius: 4px;
+    padding: 3px 6px; font-size: 11px; min-width: 0;
+    background: #fff; outline: none;
+  }
+  .grp-card-head input.grp-name-input:focus { border: none; outline: none; }
+  .grp-card-body { padding: 6px 8px 8px; display: none; }
+  .grp-card-body.open { display: block; }
+
+  /* 그룹 평가 뷰 내 텍스트 색상 통일 (#555555) */
+  #leftViewDoc .section-title { color: #555555; }
+  #leftViewDoc .note { color: #555555; }
+  #leftViewDoc .add-row-btn { color: #555555; }
+  #leftViewDoc .grp-card-body td { color: #555555; }
+  #leftViewDoc .grp-card-body th { color: #555555; }
+  #leftViewDoc .grp-card-body input { color: #555555; }
+  #leftViewDoc .grp-card-head input.grp-name-input { color: #555555; }
+
+  /* ═══ [v4.9] 입력 필드 초기 placeholder 스타일 ═══ */
+  .is-placeholder {
+    font-style: italic !important;
+    color: #9aa3ab !important;
+    font-weight: 400 !important;
+  }
+  input::placeholder, textarea::placeholder {
+    font-style: italic;
+    color: #9aa3ab;
+    font-weight: 400;
+  }
+
+  @media print { .header-right { display: none !important; } .himec-menu { display: none !important; } }
+</style>
+</head>
+<body>
+<div class="page-container">
+
+  <!-- ═══ HEADER ═══ -->
+  <div class="header" style="position:relative;">
+    <h1>HIMEC &minus; Mechanical Facility Aging Diagnosis System</h1>
+    <div class="sub">(주)하이멕 &minus; 기계설비 노후화 진단</div>
+    <h2 id="pageTitle"><span id="project-name"></span>VE (Value Engineering) Analysis Tool</h2>
+    <div class="header-right">
+      <button class="btn-main" onclick="himecMain()" title="Main" aria-label="Main">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      </button>
+      <button class="btn-save" onclick="himecSave()" title="저장" aria-label="저장">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      </button>
+      <button class="btn-file" onclick="himecExport(this)" title="파일 내보내기 (PDF / Excel)" aria-label="파일 내보내기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><polyline points="3 8 3 4 21 4 21 8"/><line x1="12" y1="12" x2="12" y2="18"/><polyline points="9 15 12 18 15 15"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ TAB BAR ═══ -->
+  <div class="tab-bar" id="tabBar">
+    <button class="tab active" id="tab-1" onclick="switchTab(1)">VE 분석 1<span class="tab-close" onclick="event.stopPropagation();removeTab(1)">✕</span></button>
+    <button class="tab add" onclick="addTab()">+</button>
+  </div>
+
+  <!-- ═══ MAIN ═══ -->
+  <div class="main">
+
+    <!-- ──────── LEFT PANEL : 입력 ──────── -->
+    <div class="panel" id="left-panel">
+
+      <!-- 뷰 전환 버튼 -->
+      <div class="left-head">
+        <div class="section-title" id="leftTitle"><span id="leftTitleText">■ 검토 개요</span>
+          <span class="note" id="leftNote" style="display:none;margin:0;">※ 최소 2명, 항목별 1~10점 상대평가, 평균값이 VE 등급 평가에 자동 반영</span>
+        </div>
+        <div class="left-icons">
+          <button class="ci-btn active" id="ciVE" title="VE 분석" aria-label="VE 분석" onclick="switchLeftView('ve')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </button>
+          <button class="ci-btn" id="ciDoc" title="그룹 평가" aria-label="그룹 평가" onclick="switchLeftView('doc')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- VE 분석 뷰 -->
+      <div class="left-view" id="leftViewVE">
+
+      <!-- ■ 검토 개요 (타이틀은 left-head로 이동) -->
+      <table class="info-table">
+        <tr>
+          <th style="width:16%">검토 항목</th>
+          <th style="width:84%">내용</th>
+        </tr>
+        <tr>
+          <td><input id="inp-subject" value="" placeholder="입력해주세요" oninput="updateTabName();recalc()"></td>
+          <td><input id="inp-desc" value="" placeholder="입력해주세요"></td>
+        </tr>
+      </table>
+
+      <!-- ■ 안건 설정 (2~5안) -->
+      <div class="section-title" style="margin-top:4px;">■ 안건 설정
+        <span style="font-weight:400;font-size:10px;color:#999;">※ 안건은 최대 7안까지 추가 가능, 비용지수는 0~1점</span>
+      </div>
+      <table class="info-table" id="alt-name-table">
+        <tr>
+          <th style="width:16%">구분</th>
+          <th data-alt-idx="1">1안</th>
+          <th data-alt-idx="2">2안</th>
+          <th data-alt-idx="3">3안</th>
+        </tr>
+        <tr class="alt-header-row">
+          <td style="font-weight:600;color:#555;font-size:10px;">안건명</td>
+          <td><input id="alt-name-1" value="" placeholder="입력해주세요" oninput="recalc()"></td>
+          <td><input id="alt-name-2" value="" placeholder="입력해주세요" oninput="recalc()"></td>
+          <td><input id="alt-name-3" value="" placeholder="입력해주세요" oninput="recalc()"></td>
+        </tr>
+        <tr class="alt-header-row">
+          <td style="font-weight:600;color:#555;font-size:10px;">비용지수(C)</td>
+          <td><input type="text" inputmode="numeric" data-cost="1" value="" placeholder="입력해주세요" oninput="recalc()"></td>
+          <td><input type="text" inputmode="numeric" data-cost="2" value="" placeholder="입력해주세요" oninput="recalc()"></td>
+          <td><input type="text" inputmode="numeric" data-cost="3" value="" placeholder="입력해주세요" oninput="recalc()"></td>
+        </tr>
+      </table>
+      <div style="display:flex;gap:4px;margin-bottom:4px;">
+        <button class="add-row-btn" style="width:auto;padding:4px 12px;" onclick="addAlternative()">＋ 안건 추가</button>
+        <button class="add-row-btn" style="width:auto;padding:4px 12px;" onclick="removeAlternative()">－ 안건 삭제</button>
+      </div>
+      <!-- ■ 평가 항목・가중치・등급 평가 (통합) -->
+      <div class="section-title" style="margin-top:4px;">■ 평가 항목 / 가중치 / 등급 평가 (1~10점)
+        <span class="note" style="margin:0;">※ 가중치 합계 100% 기준</span>
+        <span class="weight-sum" id="weightSum" style="margin-left:auto;">가중치 합계: 100%</span>
+      </div>
+      <div id="grade-table-wrap"></div>
+      <div style="display:flex;gap:4px;">
+        <button class="add-row-btn" style="width:auto;padding:4px 12px;" onclick="addCriteria()">＋ 항목 추가</button>
+        <button class="add-row-btn" style="width:auto;padding:4px 12px;" onclick="removeLastCriteria()">－ 항목 삭제</button>
+      </div>
+
+
+
+
+      
+
+      </div><!-- /leftViewVE -->
+
+      <!-- 그룹 평가 뷰 -->
+      <div class="left-view" id="leftViewDoc" style="display:none;">
+
+        <!-- ■ 그룹 평가 헤더 (타이틀은 left-head로 이동) -->
+        <!-- ■ 그룹 평가 note는 left-head의 #leftNote로 이동 -->
+
+        <!-- 평가자 추가/삭제 버튼 -->
+        <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+          <button class="add-row-btn" style="width:auto;padding:4px 12px;" onclick="addEvaluator()">＋ 평가자 추가</button>
+          <button class="add-row-btn" style="width:auto;padding:4px 12px;" onclick="removeEvaluator()">－ 평가자 삭제</button>
+          <span style="font-size:10px;color:#00838f;margin-left:auto;" id="grpEvalCount">평가자: 2명</span>
+        </div>
+
+        <!-- 평가자 카드 컨테이너 -->
+        <div id="grpEvalContainer"></div>
+
+
+
+
+
+
+
+      </div><!-- /leftViewDoc -->
+
+    </div>
+
+    <!-- ──────── RIGHT PANEL : 결과 ──────── -->
+    <div class="panel" id="right-panel">
+
+      <div class="section-title">■ 분석 결과</div>
+
+      <!-- 레이더 차트 -->
+      <div class="chart-container">
+        <canvas id="radarCanvas" height="260"></canvas>
+        <div class="chart-legend" id="chartLegend"></div>
+      </div>
+
+      <!-- 성능(기능) 평가 결과 테이블 -->
+      <div class="section-title" style="margin-top:4px;">■ 성능(기능) 평가 및 비용 지수</div>
+      <div id="result-score-table-wrap"></div>
+
+      <!-- 검토 의견 -->
+      <div class="verdict-box" id="verdictBox">
+        <div class="verdict-label">검토 의견</div>
+        <div class="verdict-value" id="verdictValue">데이터를 입력해주세요</div>
+        <div class="verdict-sub" id="verdictSub">V = F(성능지수) / C(비용지수) 기준 최고 가치 안건 선정</div>
+      </div>
+
+      <!-- 접이식 기준 출처 -->
+      <div class="source-note-collapsible">
+        <div class="source-note-toggle" onclick="toggleSourceNote()">
+          <span class="source-note-arrow" id="sourceNoteArrow">▶</span>
+          <span>분석 기준 & 출처</span>
+        </div>
+        <div class="source-note-content" id="sourceNoteContent">
+          • VE(Value Engineering) 가치공학 분석 기법<br>
+          • 건설VE 업무요령 (국토교통부 고시)<br>
+          • KS A 3001 : VE 기본원리 및 가치향상 절차<br>
+          • 가치공학 핸드북 (한국VE학회)
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="copyright">
+  ©HIMEC (주)하이멕 - Mechanical Facility Aging Diagnosis System. All Rights Reserved.
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   VE (Value Engineering) Analysis Tool - Main Logic  v5.1
+   ══════════════════════════════════════════════════════════════ */
+
+/* ─── 레이더 차트 색상 팔레트 ─── */
+var COLORS = [
+  { fill: 'rgba(0,131,143,0.15)',  stroke: '#00838f',  label: '#00838f'  },
+  { fill: 'rgba(232,93,36,0.15)',  stroke: '#e85d24',  label: '#e85d24'  },
+  { fill: 'rgba(76,175,80,0.15)',  stroke: '#4caf50',  label: '#4caf50'  },
+  { fill: 'rgba(33,150,243,0.15)', stroke: '#2196f3',  label: '#2196f3'  },
+  { fill: 'rgba(156,39,176,0.15)', stroke: '#9c27b0',  label: '#9c27b0'  },
+  { fill: 'rgba(255,193,7,0.15)',  stroke: '#ffa000',  label: '#ffa000'  },
+  { fill: 'rgba(121,85,72,0.15)',  stroke: '#795548',  label: '#795548'  }
+];
+
+/* ─── 현재 대안 수 (기본 3개) ─── */
+var altCount = 3;
+
+/* ─── TAB 관련 ─── */
+var activeTab = 1, nextTabId = 2, tabCount = 1;
+var tabData = {};  /* 각 탭의 완전 독립 상태 저장 */
+
+/* ═══════════════════════════════════════════════════════════
+   [v4.9] 입력 필드 placeholder 스타일 관리
+   ═══════════════════════════════════════════════════════════ */
+
+/* 개별 입력 필드의 값 유무에 따라 is-placeholder 클래스 토글 */
+function updatePlaceholderState(el) {
+  if (!el) return;
+  /* readonly, date 타입은 제외 */
+  if (el.readOnly || el.type === 'date') return;
+  if (el.value === '' || el.value === null || el.value === undefined) {
+    el.classList.add('is-placeholder');
+  } else {
+    el.classList.remove('is-placeholder');
+  }
+}
+
+/* 페이지 내 모든 편집 가능한 입력 필드에 일괄 적용 */
+function initPlaceholderStates() {
+  var inputs = document.querySelectorAll('input[type="text"], input:not([type]), input[inputmode="numeric"], textarea');
+  inputs.forEach(function(el) {
+    updatePlaceholderState(el);
+  });
+}
+
+/* 이벤트 위임: 사용자 입력 시 자동으로 클래스 제거/추가 */
+document.addEventListener('input', function(e) {
+  if (e.target.matches('input, textarea')) {
+    updatePlaceholderState(e.target);
+  }
+});
+document.addEventListener('change', function(e) {
+  if (e.target.matches('input, textarea')) {
+    updatePlaceholderState(e.target);
+  }
+});
+
+
+/* ═══════════════════════════════════════════════════════════
+   [v4.9/v5.1] 탭 완전 독립 - 상태 저장/복원/초기화
+   ═══════════════════════════════════════════════════════════ */
+
+/* 유틸리티 함수 */
+function valById(id) {
+  var el = document.getElementById(id);
+  return el ? el.value : '';
+}
+function setById(id, val) {
+  var el = document.getElementById(id);
+  if (el) el.value = val;
+}
+function getTodayStr() {
+  var today = new Date();
+  return today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+}
+
+/* 현재 탭의 모든 상태를 tabData[activeTab]에 저장 */
+function saveCurrentTabState() {
+  var state = {};
+  /* 검토 개요 */
+  state.subject = valById('inp-subject');
+  state.desc = valById('inp-desc');
+  state.date = valById('inp-date');
+
+  /* 대안 수 */
+  state.altCount = altCount;
+
+  /* 대안명 */
+  state.altNames = [];
+  for (var i = 1; i <= 7; i++) {
+    state.altNames.push(valById('alt-name-' + i));
+  }
+
+  /* 비용지수 */
+  state.costs = {};
+  document.querySelectorAll('input[data-cost]').forEach(function(inp) {
+    state.costs[inp.getAttribute('data-cost')] = inp.value;
+  });
+
+  /* 평가 항목 / 가중치 */
+  state.critNames = [];
+  state.critWeights = [];
+  document.querySelectorAll('#grade-table .crit-name').forEach(function(el) {
+    state.critNames.push(el.value);
+  });
+  document.querySelectorAll('#grade-table .crit-weight').forEach(function(el) {
+    state.critWeights.push(el.value);
+  });
+
+  /* 등급 */
+  state.grades = {};
+  document.querySelectorAll('input[data-grade]').forEach(function(inp) {
+    state.grades[inp.getAttribute('data-grade')] = inp.value;
+  });
+
+  /* [v5.1] 그룹 평가 상태 완전 저장 */
+  state.evalCount = evalCount;
+  state.evalOpenState = JSON.parse(JSON.stringify(evalOpenState));
+  state.grpNames = {};
+  for (var e = 0; e < evalCount; e++) {
+    var nameInp = document.getElementById('grpEvalName-' + e);
+    if (nameInp) state.grpNames[e] = nameInp.value;
+  }
+  state.grpGrades = {};
+  document.querySelectorAll('input[data-grp-grade]').forEach(function(inp) {
+    state.grpGrades[inp.getAttribute('data-grp-grade')] = inp.value;
+  });
+  state.grpAvgGrades = window.__grpAvgGrades ? JSON.parse(JSON.stringify(window.__grpAvgGrades)) : null;
+
+  /* 뷰 상태 (VE/그룹평가 중 어느 뷰인지) */
+  state.leftView = document.getElementById('leftViewVE').style.display !== 'none' ? 've' : 'doc';
+
+  /* 탭 이름 */
+  var tabEl = document.getElementById('tab-' + activeTab);
+  if (tabEl) state.tabName = tabEl.childNodes[0].textContent.trim();
+
+  tabData[activeTab] = state;
+}
+
+/* 저장된 상태를 DOM에 복원, 없으면 resetToDefaults() 호출 */
+function loadTabState(id) {
+  var state = tabData[id];
+  if (!state) {
+    resetToDefaults();
+    return;
+  }
+
+  /* 대안 수 복원 (rebuild 전에 설정) */
+  altCount = state.altCount || 3;
+
+  /* 검토 개요 복원 */
+  setById('inp-subject', state.subject || '');
+  setById('inp-desc', state.desc || '');
+  setById('inp-date', state.date || getTodayStr());
+
+  /* 대안명 테이블 재구성 */
+  rebuildAltHeaders();
+
+  /* 대안명 값 복원 */
+  for (var i = 1; i <= 7; i++) {
+    setById('alt-name-' + i, state.altNames ? (state.altNames[i - 1] || '') : '');
+  }
+
+  /* 비용지수 복원 */
+  if (state.costs) {
+    document.querySelectorAll('input[data-cost]').forEach(function(inp) {
+      var k = inp.getAttribute('data-cost');
+      if (state.costs[k] !== undefined) inp.value = state.costs[k];
+    });
+  }
+
+  /* 평가 항목 재구성 */
+  if (state.critNames && state.critNames.length > 0) {
+    var wrap = document.getElementById('grade-table-wrap');
+    var html = '<table class="info-table" id="grade-table"><tr><th style="width:16%">평가항목</th><th style="width:12%">가중치</th>';
+    for (var a = 1; a <= altCount; a++) {
+      html += '<th>' + a + '안 등급</th>';
+    }
+    html += '</tr>';
+    for (var c = 0; c < state.critNames.length; c++) {
+      html += '<tr>';
+      html += '<td><input value="' + (state.critNames[c] || '').replace(/"/g, '&quot;') + '" class="crit-name" placeholder="입력해주세요" oninput="recalc()"></td>';
+      html += '<td><span class="weight-input-wrap"><input type="text" inputmode="numeric" value="' + (state.critWeights[c] || '0') + '" class="crit-weight" oninput="recalc()"><span class="weight-unit">%</span></span></td>';
+      for (var a = 1; a <= altCount; a++) {
+        var key = c + '-' + a;
+        var gVal = state.grades ? (state.grades[key] || '') : '';
+        html += '<td><input type="text" inputmode="numeric" data-grade="' + key + '" value="' + gVal + '" placeholder="그룹평가 반영" readonly style="background:#ffffff;color:#888;"></td>';
+      }
+      html += '</tr>';
+    }
+    html += '</table>';
+    wrap.innerHTML = html;
+  } else {
+    rebuildGradeTable();
+  }
+
+  /* [v5.1] 그룹 평가 상태 복원 */
+  evalCount = state.evalCount || 2;
+  evalOpenState = state.evalOpenState ? JSON.parse(JSON.stringify(state.evalOpenState)) : {};
+  window.__grpAvgGrades = state.grpAvgGrades ? JSON.parse(JSON.stringify(state.grpAvgGrades)) : null;
+
+  /* 그룹 평가 카드 재구성 */
+  rebuildGroupEval();
+
+  /* 그룹 평가 이름/등급 값 복원 (rebuildGroupEval 후에 실행) */
+  if (state.grpNames) {
+    for (var e = 0; e < evalCount; e++) {
+      var nameInp = document.getElementById('grpEvalName-' + e);
+      if (nameInp && state.grpNames[e] !== undefined) nameInp.value = state.grpNames[e];
+    }
+  }
+  if (state.grpGrades) {
+    document.querySelectorAll('input[data-grp-grade]').forEach(function(inp) {
+      var k = inp.getAttribute('data-grp-grade');
+      if (state.grpGrades[k] !== undefined) inp.value = state.grpGrades[k];
+    });
+  }
+
+  /* 뷰 상태 복원 */
+  if (state.leftView === 'doc') {
+    switchLeftView('doc');
+  } else {
+    switchLeftView('ve');
+  }
+
+  rebuildCostTable();
+  recalc();
+  initPlaceholderStates();
+}
+
+/* 완전히 빈 새 페이지 상태로 초기화 */
+function resetToDefaults() {
+  altCount = 3;
+  evalCount = 2;
+  evalOpenState = {};
+  window.__grpAvgGrades = null;
+
+  setById('inp-subject', '');
+  setById('inp-desc', '');
+  setById('inp-date', getTodayStr());
+
+  /* [v5.6] 새 탭 초기화 시 DOM 입력값을 먼저 초기화하여 이전 탭 데이터가 따라오지 않도록 처리 */
+  /* 대안명 초기화 */
+  for (var i = 1; i <= 7; i++) {
+    var altInp = document.getElementById('alt-name-' + i);
+    if (altInp) altInp.value = '';
+  }
+  /* 비용지수 초기화 */
+  document.querySelectorAll('input[data-cost]').forEach(function(inp) { inp.value = ''; });
+  /* 평가 항목/가중치/등급 초기화 */
+  document.querySelectorAll('.crit-name').forEach(function(inp) { inp.value = ''; });
+  document.querySelectorAll('.crit-weight').forEach(function(inp) { inp.value = '0'; });
+  document.querySelectorAll('input[data-grade]').forEach(function(inp) { inp.value = ''; });
+  /* 그룹 평가 초기화 */
+  document.querySelectorAll('input[data-grp-grade]').forEach(function(inp) { inp.value = ''; });
+  var grpContainer = document.getElementById('grpEvalContainer');
+  if (grpContainer) grpContainer.innerHTML = '';
+
+  rebuildAltHeaders();
+  rebuildGradeTable();
+  rebuildCostTable();
+  rebuildGroupEval();
+
+  /* VE 뷰로 전환 */
+  switchLeftView('ve');
+
+  recalc();
+  initPlaceholderStates();
+}
+
+
+function updateTabName() {
+  var subj = document.getElementById('inp-subject').value || 'VE 분석';
+  var tabEl = document.getElementById('tab-' + activeTab);
+  if (tabEl) {
+    tabEl.childNodes[0].textContent = subj + ' ';
+  }
+}
+
+function switchTab(id) {
+  if (id === activeTab) return;
+  /* 현재 탭 상태 저장 */
+  saveCurrentTabState();
+  /* 탭 UI 전환 */
+  activeTab = id;
+  document.querySelectorAll('.tab:not(.add)').forEach(function(t) { t.classList.remove('active'); });
+  var el = document.getElementById('tab-' + id);
+  if (el) el.classList.add('active');
+  /* 새 탭 상태 로드 */
+  loadTabState(id);
+  updateTabName();
+}
+
+function addTab() {
+  if (tabCount >= 5) { alert('최대 5개 탭까지 생성 가능합니다.'); return; }
+  /* 현재 탭 상태 저장 */
+  saveCurrentTabState();
+
+  var bar = document.getElementById('tabBar');
+  var addBtn = bar.querySelector('.tab.add');
+  var btn = document.createElement('button');
+  btn.className = 'tab';
+  btn.id = 'tab-' + nextTabId;
+  var tid = nextTabId;
+  btn.onclick = function() { switchTab(tid); };
+  btn.innerHTML = 'VE 분석 ' + nextTabId + '<span class="tab-close" onclick="event.stopPropagation();removeTab(' + nextTabId + ')">✕</span>';
+  bar.insertBefore(btn, addBtn);
+
+  /* 새 탭에 null 상태 할당 → 완전히 새 페이지로 로드 */
+  tabData[nextTabId] = null;
+  activeTab = nextTabId;
+  document.querySelectorAll('.tab:not(.add)').forEach(function(t) { t.classList.remove('active'); });
+  btn.classList.add('active');
+
+  nextTabId++;
+  tabCount++;
+
+  /* 새 페이지 초기화 */
+  loadTabState(activeTab);
+  updateTabName();
+}
+
+function removeTab(id) {
+  if (tabCount <= 1) { alert('최소 1개 탭은 유지해야 합니다.'); return; }
+  var el = document.getElementById('tab-' + id);
+  if (el) el.remove();
+  /* 삭제된 탭의 데이터 제거 */
+  delete tabData[id];
+  tabCount--;
+  if (activeTab === id) {
+    var remaining = document.querySelector('.tab:not(.add)');
+    if (remaining) {
+      var newId = parseInt(remaining.id.replace('tab-', ''));
+      activeTab = newId;
+      remaining.classList.add('active');
+      loadTabState(newId);
+      updateTabName();
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   대안 추가/삭제
+   ═══════════════════════════════════════════════════════════ */
+function addAlternative() {
+  if (altCount >= 7) { alert('최대 7안까지 추가 가능합니다.'); return; }
+  altCount++;
+  rebuildAltHeaders();
+  rebuildGradeTable();
+  rebuildCostTable();
+  recalc();
+  initPlaceholderStates();
+}
+
+function removeAlternative() {
+  if (altCount <= 2) { alert('최소 2안은 유지해야 합니다.'); return; }
+  altCount--;
+  rebuildAltHeaders();
+  rebuildGradeTable();
+  rebuildCostTable();
+  recalc();
+  initPlaceholderStates();
+}
+
+/* 대안명 헤더 테이블 재구성 */
+function rebuildAltHeaders() {
+  var tbl = document.getElementById('alt-name-table');
+  /* 기존 대안명 값 보존 */
+  var names = [];
+  for (var i = 1; i <= 7; i++) {
+    var inp = document.getElementById('alt-name-' + i);
+    names.push(inp ? inp.value : '');
+  }
+  /* 기존 비용지수 값 보존 */
+  var oldCosts = {};
+  document.querySelectorAll('input[data-cost]').forEach(function(inp) {
+    oldCosts[inp.getAttribute('data-cost')] = inp.value;
+  });
+
+  var hdrRow = '<tr><th style="width:16%">구분</th>';
+  for (var i = 1; i <= altCount; i++) {
+    hdrRow += '<th data-alt-idx="' + i + '">' + i + '안</th>';
+  }
+  hdrRow += '</tr>';
+
+  var dataRow = '<tr class="alt-header-row"><td style="font-weight:600;color:#555;font-size:10px;">안건명</td>';
+  for (var i = 1; i <= altCount; i++) {
+    dataRow += '<td><input id="alt-name-' + i + '" value="' + (names[i - 1] || '').replace(/"/g, '&quot;') + '" placeholder="입력해주세요" oninput="recalc()"></td>';
+  }
+  dataRow += '</tr>';
+
+  /* 비용지수 행 */
+  var costRow = '<tr class="alt-header-row"><td style="font-weight:600;color:#555;font-size:10px;">비용지수(C)</td>';
+  for (var i = 1; i <= altCount; i++) {
+    var oldVal = oldCosts[String(i)] || '';
+      costRow += '<td><input type="text" inputmode="numeric" data-cost="' + i + '" value="' + oldVal + '" placeholder="입력해주세요" oninput="recalc()"></td>';
+  }
+  costRow += '</tr>';
+
+  tbl.innerHTML = hdrRow + dataRow + costRow;
+  updateAltHeaderLabels();
+  initPlaceholderStates();
+}
+
+function addCriteria() {
+  var tbl = document.getElementById('grade-table');
+  if (!tbl) return;
+  var rowIndex = tbl.querySelectorAll('tr').length - 1;
+  var tr = document.createElement('tr');
+  tr.innerHTML = '<td><input value="" class="crit-name" placeholder="입력해주세요" oninput="recalc()"></td>' +
+                 '<td><span class="weight-input-wrap"><input type="text" inputmode="numeric" value="0" class="crit-weight" oninput="recalc()"><span class="weight-unit">%</span></span></td>';
+  for (var a = 1; a <= altCount; a++) {
+    tr.innerHTML += '<td><input type="text" inputmode="numeric" data-grade="' + rowIndex + '-' + a + '" value="" placeholder="그룹평가 반영" readonly style="background:#ffffff;color:#888;"></td>';
+  }
+  tbl.appendChild(tr);
+  recalc();
+  initPlaceholderStates();
+}
+
+function removeLastCriteria() {
+  var tbl = document.getElementById('grade-table');
+  if (!tbl) return;
+  var rows = tbl.querySelectorAll('tr');
+  if (rows.length <= 2) { alert('최소 1개 항목은 유지해야 합니다.'); return; }
+  tbl.removeChild(rows[rows.length - 1]);
+  recalc();
+}
+
+
+function getCriteria() {
+  var names = [], weights = [];
+  document.querySelectorAll('#grade-table .crit-name').forEach(function(el) { names.push(el.value); });
+  document.querySelectorAll('#grade-table .crit-weight').forEach(function(el) { weights.push(parseFloat(el.value) || 0); });
+  return { names: names, weights: weights };
+}
+
+var DEFAULT_CRITERIA = [
+  { name: '', weight: 0 }
+];
+
+function rebuildGradeTable() {
+  var wrap = document.getElementById('grade-table-wrap');
+
+  /* 기존 항목명/가중치/등급 값 보존 */
+  var oldNames = [], oldWeights = [];
+  wrap.querySelectorAll('.crit-name').forEach(function(el) { oldNames.push(el.value); });
+  wrap.querySelectorAll('.crit-weight').forEach(function(el) { oldWeights.push(el.value); });
+  var oldGrades = {};
+  wrap.querySelectorAll('input[data-grade]').forEach(function(inp) {
+    oldGrades[inp.getAttribute('data-grade')] = inp.value;
+  });
+
+  var useDefault = oldNames.length === 0;
+  var numCrit = useDefault ? DEFAULT_CRITERIA.length : oldNames.length;
+
+  var html = '<table class="info-table" id="grade-table"><tr><th style="width:16%">평가항목</th><th style="width:12%">가중치</th>';
+  for (var a = 1; a <= altCount; a++) {
+    html += '<th>' + a + '안 등급</th>';
+  }
+  html += '</tr>';
+
+  for (var c = 0; c < numCrit; c++) {
+    var nameVal = useDefault ? DEFAULT_CRITERIA[c].name : (oldNames[c] || '');
+    var weightVal = useDefault ? DEFAULT_CRITERIA[c].weight : (oldWeights[c] || '0');
+    html += '<tr>';
+    html += '<td><input value="' + String(nameVal).replace(/"/g, '&quot;') + '" class="crit-name" placeholder="입력해주세요" oninput="recalc()"></td>';
+    html += '<td><span class="weight-input-wrap"><input type="text" inputmode="numeric" value="' + weightVal + '" class="crit-weight" oninput="recalc()"><span class="weight-unit">%</span></span></td>';
+    for (var a = 1; a <= altCount; a++) {
+      var key = c + '-' + a;
+      var oldVal = oldGrades[key] || '';
+      html += '<td><input type="text" inputmode="numeric" data-grade="' + key + '" value="' + oldVal + '" placeholder="그룹평가 반영" readonly style="background:#ffffff;color:#888;"></td>';
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  wrap.innerHTML = html;
+  initPlaceholderStates();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   비용 지수 테이블 동적 구성
+   ═══════════════════════════════════════════════════════════ */
+function rebuildCostTable() {
+  /* 비용지수는 대안 설정 표(rebuildAltHeaders)에서 관리 */
+}
+
+
+
+/* ─── 분석 기준 & 출처 접이식 토글 ─── */
+function toggleSourceNote() {
+  var arrow = document.getElementById('sourceNoteArrow');
+  var content = document.getElementById('sourceNoteContent');
+  if (content.classList.contains('open')) {
+    content.classList.remove('open');
+    arrow.classList.remove('open');
+  } else {
+    content.classList.add('open');
+    arrow.classList.add('open');
+  }
+}
+
+/* 대안명 표시 헬퍼 */
+function altSetTableLabel(i) {
+  var inp = document.getElementById('alt-name-' + i);
+  var nm = inp ? inp.value.trim() : '';
+  var base = i + '안';
+  return nm ? (base + '(' + nm + ')') : base;
+}
+function altDisplayName(i) {
+  var inp = document.getElementById('alt-name-' + i);
+  var nm = inp ? inp.value.trim() : '';
+  return nm ? nm : (i + '안');
+}
+function updateAltHeaderLabels() {
+  var tbl = document.getElementById('alt-name-table');
+  if (!tbl) return;
+  var ths = tbl.querySelectorAll('th[data-alt-idx]');
+  ths.forEach(function(th) {
+    var i = parseInt(th.getAttribute('data-alt-idx'), 10);
+    var label = altSetTableLabel(i);
+    th.textContent = label;
+    th.title = label;
+  });
+}
+
+function recalc() {
+  updateAltHeaderLabels();
+  var crit = getCriteria();
+  var numCrit = crit.names.length;
+
+  /* 1) 가중치 합계 검증 */
+  var wSum = 0;
+  crit.weights.forEach(function(w) { wSum += w; });
+  var wsEl = document.getElementById('weightSum');
+  wsEl.textContent = '가중치 합계: ' + wSum + '%';
+  wsEl.className = 'weight-sum ' + (wSum === 100 ? 'ok' : 'error');
+
+  /* 2) 대안별 등급 & 가중 점수 수집 */
+  var grades = [];
+  var scores = [];
+  var funcIndex = [];
+
+  for (var a = 0; a < altCount; a++) {
+    grades[a] = [];
+    scores[a] = [];
+    var fSum = 0;
+    for (var c = 0; c < numCrit; c++) {
+      var inp = document.querySelector('input[data-grade="' + c + '-' + (a + 1) + '"]');
+      var g = inp ? (parseFloat(inp.value) || 0) : 0;
+      grades[a][c] = g;
+      var s = g * (crit.weights[c] / 100);
+      scores[a][c] = Math.round(s * 100) / 100;
+      fSum += s;
+    }
+    funcIndex[a] = Math.round(fSum * 10) / 10;
+  }
+
+  /* 3) 비용 지수 수집 */
+  var costIndex = [];
+  for (var a = 1; a <= altCount; a++) {
+    var cInp = document.querySelector('input[data-cost="' + a + '"]');
+    costIndex[a - 1] = cInp ? (parseFloat(cInp.value) || 1) : 1;
+  }
+
+  /* 4) 가치 지수 V = F / C */
+  var valueIndex = [];
+  for (var a = 0; a < altCount; a++) {
+    valueIndex[a] = costIndex[a] > 0 ? Math.round((funcIndex[a] / costIndex[a]) * 10) / 10 : 0;
+  }
+
+  /* 5) 최고 가치 대안 찾기 */
+  var bestIdx = 0, bestVal = valueIndex[0];
+  for (var a = 1; a < altCount; a++) {
+    if (valueIndex[a] > bestVal) { bestVal = valueIndex[a]; bestIdx = a; }
+  }
+
+  /* ─── 결과 테이블 1: 성능 평가 및 비용 지수 ─── */
+  var rWrap1 = document.getElementById('result-score-table-wrap');
+  var rColWidth = ((100 - 16) / altCount).toFixed(2);
+  var rColgroup = '<colgroup><col style="width:16%">';
+  for (var rc = 0; rc < altCount; rc++) rColgroup += '<col style="width:' + rColWidth + '%">';
+  rColgroup += '</colgroup>';
+  var rhtml = '<table class="result-table">' + rColgroup + '<tr><th style="width:16%">평가항목</th>';
+  rhtml += '<th colspan="' + altCount + '">점수 (등급×가중치)</th></tr><tr>';
+  rhtml += '<th></th>';
+  for (var a = 1; a <= altCount; a++) rhtml += '<th>' + altDisplayName(a) + '</th>';
+  rhtml += '</tr>';
+
+  for (var c = 0; c < numCrit; c++) {
+    rhtml += '<tr><td style="text-align:left;padding-left:6px;">' + (crit.names[c] || '-') + '</td>';
+    for (var a = 0; a < altCount; a++) rhtml += '<td style="color:#00838f;font-weight:600;">' + (scores[a][c] || '-') + '</td>';
+    rhtml += '</tr>';
+  }
+  rhtml += '<tr style="background:#f5f5f5;font-weight:700;"><td style="text-align:center;">성능(기능) 지수 (F)</td>';
+  for (var a = 0; a < altCount; a++) rhtml += '<td style="color:#00838f;">' + funcIndex[a] + '</td>';
+  rhtml += '</tr>';
+  rhtml += '<tr style="background:#f5f5f5;font-weight:700;"><td style="text-align:center;">비용 지수 (C)</td>';
+  for (var a = 0; a < altCount; a++) rhtml += '<td>' + costIndex[a] + '</td>';
+  rhtml += '</tr>';
+  rhtml += '<tr style="background:#eef7f7;font-weight:700;"><td style="text-align:center;">가치 지수 (V = F/C)</td>';
+  for (var a = 0; a < altCount; a++) {
+    if (a === bestIdx && bestVal > 0) {
+      rhtml += '<td class="selected-cell">' + valueIndex[a] + ' </td>';
+    } else {
+      rhtml += '<td>' + valueIndex[a] + '</td>';
+    }
+  }
+  rhtml += '</tr>';
+  rhtml += '</table>';
+  rWrap1.innerHTML = rhtml;
+
+  /* bestName */
+  var bestName = '';
+  var bestNInp = document.getElementById('alt-name-' + (bestIdx + 1));
+  if (bestNInp && bestNInp.value) bestName = bestNInp.value;
+  else bestName = (bestIdx + 1) + '안';
+
+  /* ─── 검토 의견 ─── */
+  var vBox = document.getElementById('verdictBox');
+  var vVal = document.getElementById('verdictValue');
+  var vSub = document.getElementById('verdictSub');
+  if (bestVal > 0) {
+    vBox.className = 'verdict-box';
+    vVal.textContent = '"' + bestName + '" 선정 (V = ' + bestVal + ')';
+    var sorted = valueIndex.slice().sort(function(a, b) { return b - a; });
+    var diff = sorted.length >= 2 ? Math.round((sorted[0] - sorted[1]) * 10) / 10 : 0;
+  } else {
+    vBox.className = 'verdict-box';
+    vVal.textContent = '데이터를 입력해주세요';
+    vSub.textContent = 'V = F(성능지수) / C(비용지수) 기준 안건 선정';
+  }
+
+  /* ─── 레이더 차트 그리기 ─── */
+  drawRadar(crit, grades);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   레이더 차트 (Canvas 직접 그리기)
+   ═══════════════════════════════════════════════════════════ */
+function drawRadar(crit, grades) {
+  var canvas = document.getElementById('radarCanvas');
+  var ctx = canvas.getContext('2d');
+
+  var dpr = window.devicePixelRatio || 1;
+  var rect = canvas.parentElement.getBoundingClientRect();
+  var w = rect.width - 12;
+  var h = 260;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  var cx = w / 2;
+  var cy = h / 2 + 5;
+  var R = Math.min(cx, cy) - 35;
+  var n = crit.names.length;
+  if (n < 3) { ctx.clearRect(0, 0, w, h); return; }
+
+  var angleStep = (2 * Math.PI) / n;
+  var startAngle = -Math.PI / 2;
+
+  ctx.clearRect(0, 0, w, h);
+
+  for (var lv = 1; lv <= 5; lv++) {
+    var r = (R / 5) * lv;
+    ctx.beginPath();
+    for (var i = 0; i <= n; i++) {
+      var angle = startAngle + angleStep * (i % n);
+      var x = cx + r * Math.cos(angle);
+      var y = cy + r * Math.sin(angle);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    ctx.fillStyle = '#ccc';
+    ctx.font = '8px sans-serif';
+    ctx.fillText(lv * 2, cx + 2, cy - r + 10);
+  }
+
+  for (var i = 0; i < n; i++) {
+    var angle = startAngle + angleStep * i;
+    var ex = cx + R * Math.cos(angle);
+    var ey = cy + R * Math.sin(angle);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    var lx = cx + (R + 18) * Math.cos(angle);
+    var ly = cy + (R + 18) * Math.sin(angle);
+    ctx.fillStyle = '#555';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(crit.names[i] || '', lx, ly);
+  }
+
+  for (var a = 0; a < altCount; a++) {
+    ctx.beginPath();
+    for (var i = 0; i <= n; i++) {
+      var idx = i % n;
+      var angle = startAngle + angleStep * idx;
+      var val = (grades[a] && grades[a][idx]) ? grades[a][idx] : 0;
+      var r = (val / 10) * R;
+      var x = cx + r * Math.cos(angle);
+      var y = cy + r * Math.sin(angle);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = COLORS[a].fill;
+    ctx.fill();
+    ctx.strokeStyle = COLORS[a].stroke;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    for (var i = 0; i < n; i++) {
+      var angle = startAngle + angleStep * i;
+      var val = (grades[a] && grades[a][i]) ? grades[a][i] : 0;
+      var r2 = (val / 10) * R;
+      var px = cx + r2 * Math.cos(angle);
+      var py = cy + r2 * Math.sin(angle);
+      ctx.beginPath();
+      ctx.arc(px, py, 3, 0, 2 * Math.PI);
+      ctx.fillStyle = COLORS[a].stroke;
+      ctx.fill();
+    }
+  }
+
+  var legEl = document.getElementById('chartLegend');
+  var lhtml = '';
+  for (var a = 0; a < altCount; a++) {
+    var nm = document.getElementById('alt-name-' + (a + 1));
+    var label = (nm && nm.value) ? nm.value : ((a + 1) + '안');
+    lhtml += '<div class="chart-legend-item"><div class="chart-legend-dot" style="background:' + COLORS[a].stroke + ';"></div>' + label + '</div>';
+  }
+  legEl.innerHTML = lhtml;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   저장 / 불러오기 (HDD 방식 통일 — HIMEC_SAVE 키 체계)
+   ═══════════════════════════════════════════════════════════ */
+const STORE_KEY = 'HIMEC_SAVE::ve_tool::' + (new URLSearchParams(location.search).get('projectId') || 'default');
+
+function himecSave() {
+  try {
+    /* 모든 input / select / textarea 값을 id 또는 인덱스 기반으로 수집 */
+    var fieldData = {};
+    var els = document.querySelectorAll('input, select, textarea');
+    els.forEach(function(el, i) {
+      var k = el.id ? ('#' + el.id) : ('@' + i);
+      if (el.type === 'checkbox' || el.type === 'radio') {
+        fieldData[k] = { t: 'chk', v: el.checked };
+      } else {
+        fieldData[k] = { t: 'val', v: el.value };
+      }
+    });
+    /* VE 전용 구조 데이터 추가 저장 */
+    var veState = {};
+    veState.__altCount = altCount;
+    veState.__evalCount = evalCount;
+    veState.__critNames = [];
+    veState.__critWeights = [];
+    document.querySelectorAll('#grade-table .crit-name').forEach(function(el) { veState.__critNames.push(el.value); });
+    document.querySelectorAll('#grade-table .crit-weight').forEach(function(el) { veState.__critWeights.push(el.value); });
+    localStorage.setItem(STORE_KEY, JSON.stringify({ fields: fieldData, veState: veState }));
+    showToast('저장되었습니다.');
+  } catch (e) {
+    alert('저장에 실패했습니다: ' + e.message);
+  }
+}
+
+function loadSaved() {
+  try {
+    var raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return false;
+    var data = JSON.parse(raw);
+    if (!data.fields) return false;
+
+    /* VE 구조 데이터 먼저 복원 (rebuild 전에 altCount / evalCount 설정) */
+    if (data.veState) {
+      if (data.veState.__altCount) altCount = data.veState.__altCount;
+      if (data.veState.__evalCount) evalCount = data.veState.__evalCount;
+    }
+
+    /* DOM rebuild (altCount 기반으로 테이블 재구성) */
+    rebuildAltHeaders();
+    rebuildGradeTable();
+    rebuildCostTable();
+    rebuildGroupEval();
+
+    /* 모든 필드 값 복원 */
+    var els = document.querySelectorAll('input, select, textarea');
+    els.forEach(function(el, i) {
+      var k = el.id ? ('#' + el.id) : ('@' + i);
+      var rec = data.fields[k];
+      if (!rec) return;
+      if (rec.t === 'chk') {
+        el.checked = !!rec.v;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      } else {
+        el.value = rec.v;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+
+    recalc();
+    initPlaceholderStates();
+    return true;
+  } catch (e) {
+    console.warn('loadSaved 오류:', e);
+  }
+  return false;
+}
+
+/* window.himecSave export (헤더 버튼 onclick에서 호출) */
+window.himecSave = himecSave;
+
+/* ═══════════════════════════════════════════════════════════
+   HIMEC 공통 헤더 기능 (Main / Export) - Tool-202 표준
+   ═══════════════════════════════════════════════════════════ */
+function himecMain() {
+  location.href = '../tool_dashboard.html';
+}
+
+function himecCloseMenu() {
+  var m = document.getElementById('himecExportMenu');
+  if (m) m.parentNode.removeChild(m);
+  document.removeEventListener('click', himecOutside, true);
+}
+function himecOutside(e) {
+  var m = document.getElementById('himecExportMenu');
+  if (m && !m.contains(e.target)) himecCloseMenu();
+}
+
+function himecExport(btn) {
+  if (document.getElementById('himecExportMenu')) { himecCloseMenu(); return; }
+  var m = document.createElement('div');
+  m.className = 'himec-menu';
+  m.id = 'himecExportMenu';
+  m.innerHTML =
+    '<button data-x="pdf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>PDF로 저장</button>' +
+    '<button data-x="xls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/></svg>Excel로 내보내기</button>';
+  document.body.appendChild(m);
+  var r = btn.getBoundingClientRect();
+  var left = window.scrollX + r.right - m.offsetWidth; if (left < 6) left = 6;
+  m.style.top = (window.scrollY + r.bottom + 6) + 'px';
+  m.style.left = left + 'px';
+  m.addEventListener('click', function(e) {
+    var t = e.target.closest('button'); if (!t) return;
+    var x = t.getAttribute('data-x'); himecCloseMenu();
+    if (x === 'pdf') himecPDF(); else himecExcel();
+  });
+  setTimeout(function() { document.addEventListener('click', himecOutside, true); }, 0);
+}
+
+function himecPDF() {
+  window.print();
+}
+function himecExcel() {
+  alert('Excel 내보내기는 추후 별도 양식으로 제공될 예정입니다.');
+}
+
+function showToast(msg) {
+  var el = document.getElementById('__toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = '__toast';
+    el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:6px;font-size:13px;z-index:99999;opacity:0;transition:opacity .2s';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  clearTimeout(el.__t);
+  el.__t = setTimeout(function() { el.style.opacity = '0'; }, 1800);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   초기화
+   ═══════════════════════════════════════════════════════════ */
+function init() {
+  /* URL 파라미터에서 프로젝트명 추출 */
+  var params = new URLSearchParams(window.location.search);
+  var pn = params.get('projectName');
+  if (pn) {
+    document.getElementById('project-name').textContent = pn;
+    document.title = pn + ' - VE Analysis';
+  }
+
+  /* 저장된 값 복원 시도 — 없으면 기본 초기화 수행 */
+  var restored = loadSaved();
+  if (!restored) {
+    rebuildAltHeaders();
+    rebuildGradeTable();
+    rebuildCostTable();
+    rebuildGroupEval();
+    recalc();
+    initPlaceholderStates();
+  }
+}
+
+window.addEventListener('DOMContentLoaded', init);
+window.addEventListener('resize', function() { recalc(); });
+
+
+/* ═══════════════════════════════════════════════════════════
+   그룹 평가 (Group Evaluation) 로직
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── 평가자 수 (최소 3명) ─── */
+var evalCount = 2;
+
+/* ─── 평가자 카드 열림/닫힘 상태 보존 ─── */
+var evalOpenState = {};
+
+/* 평가자 추가 */
+function addEvaluator() {
+  evalCount++;
+  rebuildGroupEval();
+}
+
+/* 평가자 삭제 (최소 3명 유지) */
+function removeEvaluator() {
+  if (evalCount <= 2) { alert('최소 3명의 평가자는 유지해야 합니다.'); return; }
+  evalCount--;
+  rebuildGroupEval();
+}
+
+/* 개별 카드 열기/닫기 토글 */
+function toggleEvalCard(idx) {
+  var body = document.getElementById('grpCardBody-' + idx);
+  var arrow = document.getElementById('grpArrow-' + idx);
+  if (!body) return;
+  if (body.classList.contains('open')) {
+    body.classList.remove('open');
+    arrow.classList.remove('open');
+    evalOpenState[idx] = false;
+  } else {
+    body.classList.add('open');
+    arrow.classList.add('open');
+    evalOpenState[idx] = true;
+  }
+}
+
+/* ─── 그룹 평가 테이블 전체 재구성 ─── */
+function rebuildGroupEval() {
+  var container = document.getElementById('grpEvalContainer');
+  if (!container) return;
+
+  /* VE 뷰의 현재 항목/대안 정보 가져오기 */
+  var crit = getCriteria();
+  var numCrit = crit.names.length;
+  var numAlt = altCount;
+
+  /* 기존 입력값 보존 */
+  var savedNames = {};
+  var savedGrades = {};
+  for (var e = 0; e < evalCount + 5; e++) {
+    var nameInp = document.getElementById('grpEvalName-' + e);
+    if (nameInp) savedNames[e] = nameInp.value;
+    for (var c = 0; c < numCrit + 5; c++) {
+      for (var a = 1; a <= numAlt + 2; a++) {
+        var inp = document.querySelector('input[data-grp-grade="' + e + '-' + c + '-' + a + '"]');
+        if (inp) savedGrades[e + '-' + c + '-' + a] = inp.value;
+      }
+    }
+  }
+
+  var html = '';
+  for (var e = 0; e < evalCount; e++) {
+    var isOpen = evalOpenState[e] !== undefined ? evalOpenState[e] : (e === 0);
+    var nameVal = savedNames[e] || '';
+
+    html += '<div class="grp-card">';
+    html += '<div class="grp-card-head" onclick="toggleEvalCard(' + e + ')">';
+    html += '<span class="grp-arrow ' + (isOpen ? 'open' : '') + '" id="grpArrow-' + e + '">▶</span>';
+    html += '<span class="grp-eval-num">' + (e + 1) + '</span>';
+    html += '<input class="grp-name-input" id="grpEvalName-' + e + '" value="' + nameVal.replace(/"/g, '&quot;') + '" placeholder="평가자를 입력해주세요" onclick="event.stopPropagation()">';
+    html += '</div>';
+
+    html += '<div class="grp-card-body ' + (isOpen ? 'open' : '') + '" id="grpCardBody-' + e + '">';
+    html += '<table class="info-table" style="margin-bottom:0;">';
+    html += '<tr><th style="width:16%">평가항목</th>';
+    for (var a = 1; a <= numAlt; a++) {
+      var altName = document.getElementById('alt-name-' + a);
+      var aLabel = (altName && altName.value) ? altName.value : (a + '안');
+      html += '<th>' + aLabel + '</th>';
+    }
+    html += '</tr>';
+
+    for (var c = 0; c < numCrit; c++) {
+      html += '<tr>';
+      html += '<td style="text-align:center;padding-left:6px;font-size:10px;background:#e8e8e8;font-weight:600;color:#555555;">' + (crit.names[c] || '항목 ' + (c + 1)) + '</td>';
+      for (var a = 1; a <= numAlt; a++) {
+        var key = e + '-' + c + '-' + a;
+        var oldVal = savedGrades[key] || '';
+        html += '<td><input type="text" inputmode="numeric" data-grp-grade="' + key + '" value="' + oldVal + '" placeholder="입력해주세요" oninput="calcGroupAvg()" style="text-align:center;"></td>';
+      }
+      html += '</tr>';
+    }
+    html += '</table>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+  document.getElementById('grpEvalCount').textContent = '평가자: ' + evalCount + '명';
+
+  calcGroupAvg();
+  initPlaceholderStates();
+}
+
+/* ─── 그룹 평균 계산 & VE 등급 자동 반영 ─── */
+function calcGroupAvg() {
+  var crit = getCriteria();
+  var numCrit = crit.names.length;
+  var numAlt = altCount;
+
+  var avgGrades = [];
+
+  for (var c = 0; c < numCrit; c++) {
+    avgGrades[c] = [];
+    for (var a = 1; a <= numAlt; a++) {
+      var sum = 0, cnt = 0;
+      for (var e = 0; e < evalCount; e++) {
+        var inp = document.querySelector('input[data-grp-grade="' + e + '-' + c + '-' + a + '"]');
+        if (inp && inp.value !== '') {
+          var v = parseFloat(inp.value) || 0;
+          if (v < 1) v = 1;
+          if (v > 10) v = 10;
+          sum += v;
+          cnt++;
+        }
+      }
+      if (cnt > 0) {
+        avgGrades[c][a] = Math.round((sum / cnt) * 10) / 10;
+      } else {
+        avgGrades[c][a] = null;
+      }
+    }
+  }
+
+  window.__grpAvgGrades = avgGrades;
+  autoApplyGroupAvgToVE();
+}
+
+/* ─── 평균값을 VE 등급 평가에 자동 반영 ─── */
+function autoApplyGroupAvgToVE() {
+  var avgGrades = window.__grpAvgGrades;
+  if (!avgGrades || avgGrades.length === 0) return;
+
+  var crit = getCriteria();
+  var numCrit = crit.names.length;
+  var applied = false;
+
+  for (var c = 0; c < numCrit; c++) {
+    if (!avgGrades[c]) continue;
+    for (var a = 1; a <= altCount; a++) {
+      var val = avgGrades[c][a];
+      if (val !== null && val !== undefined) {
+        var inp = document.querySelector('#grade-table input[data-grade="' + c + '-' + a + '"]');
+        if (inp) {
+          inp.value = val;
+          applied = true;
+        }
+      }
+    }
+  }
+
+  if (applied) {
+    recalc();
+  }
+}
+
+/* 기존 호환용 래퍼 (VE 뷰 전환 시 호출) */
+function applyGroupAvgToVE() {
+  autoApplyGroupAvgToVE();
+}
+
+  /* ─── 좌측 패널 뷰 전환 ─── */
+  function switchLeftView(mode) {
+    var veView    = document.getElementById('leftViewVE');
+    var docView   = document.getElementById('leftViewDoc');
+    var btnVE     = document.getElementById('ciVE');
+    var btnDoc    = document.getElementById('ciDoc');
+    var leftTitle = document.getElementById('leftTitle');
+    if (mode === 've') {
+      veView.style.display  = 'flex';
+      docView.style.display = 'none';
+      btnVE.classList.add('active');
+      btnDoc.classList.remove('active');
+      /* left-head 타이틀 변경 */
+      var leftTitleText = document.getElementById('leftTitleText'); if (leftTitleText) leftTitleText.textContent = '■ 검토 개요';
+      /* left-head note 숨김 */
+      var leftNote = document.getElementById('leftNote');
+      if (leftNote) leftNote.style.display = 'none';
+      /* 그룹 평가 평균값 자동 반영 */
+      if (window.__grpAvgGrades && window.__grpAvgGrades.length > 0) {
+        applyGroupAvgToVE();
+      }
+      recalc();
+    } else {
+      veView.style.display  = 'none';
+      docView.style.display = 'flex';
+      btnDoc.classList.add('active');
+      btnVE.classList.remove('active');
+      /* left-head 타이틀 변경 */
+      var leftTitleText = document.getElementById('leftTitleText'); if (leftTitleText) leftTitleText.textContent = '■ 그룹 평가';
+      /* left-head note 표시 */
+      var leftNote = document.getElementById('leftNote');
+      if (leftNote) leftNote.style.display = '';
+      /* 그룹 평가 뷰 진입 시 VE 항목/대안 동기화 */
+      rebuildGroupEval();
+    }
+  }
+
+</script>
+</body>
+</html>
